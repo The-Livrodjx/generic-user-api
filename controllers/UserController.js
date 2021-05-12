@@ -1,0 +1,159 @@
+var User = require("../models/User")
+var PasswordToken = require("../models/PasswordToken")
+var bcrypt = require("bcrypt")
+var jwt = require("jsonwebtoken")
+
+var secret = "lkpfaemklfealkfamlkfsadmlk"
+
+class UserController {
+
+    async index(req, res) {
+
+        var users = await User.findAll()
+
+        return res.json({users: users})
+    }
+
+    async findUser(req, res) {
+
+        var id = req.params.id
+        var user = await User.findById(id)
+
+        if(user == undefined) {
+            res.status(404)
+            return res.json({message: "Não encontrado"})
+        }
+        return res.json(user)
+    }
+
+
+    async create(req, res) {
+        
+        const {email, name, password} = req.body
+
+        if(email == undefined) {
+
+            res.status(403)
+
+           
+            return res.json({err: "O e-mail é inválido !"})
+        }
+
+        var emailExists = await User.findByEmail(email);
+
+        if(emailExists) {
+            res.status(406)
+            res.json({err: "O e-mail já está cadastrado"})
+            return;
+        }
+
+        await User.New(email, password, name)
+
+        res.status(200)
+        res.send("Tudo ok !")
+    }
+
+    async edit(req, res) {
+
+        var {id, name, email, role} = req.body
+
+        var result = await User.update(id, email, name, role)
+
+        if(result != undefined) {
+
+            if(result.status) {
+                res.status(200)
+                res.json({message: "Usuário editado com sucesso !"})
+            }
+            else {
+                res.status(406)
+                return res.json({err: result.err})
+            }
+        }else {
+            res.status(406)
+            return res.json({err: "Ocorreu um erro no servidor"})
+        }
+    }
+
+    async remove(req, res) {
+
+        var id = req.params.id
+
+        var result = await User.delete(id)
+
+        if(result.status) {
+            res.status(200)
+            res.json({message: "Usuário deletado"})
+
+        }else{
+            res.status(406)
+            res.json({err: result.err})
+        }
+    }
+
+    async recoverPassword(req, res) {
+
+        var email = req.body.email
+        var result = await PasswordToken.create(email)
+
+
+        if(result.status) {
+
+            res.status(200)
+
+            return res.json({token: result.token})
+
+        }else {
+            res.status(406)
+            res.json({err: result.err})
+        }
+    }
+
+    async changePassword(req, res) {
+
+        var token = req.body.token
+        var password = req.body.password;
+
+        var isTokenValid = await PasswordToken.validate(token)
+
+        if(isTokenValid.status) {
+
+            await User.changePassword(password, isTokenValid.token.user_id, isTokenValid.token.token)
+            res.status(200)
+            res.send("Senha alterada")
+            
+        }else {
+
+            res.status(406)
+            res.send("Token inválido")
+        }
+    }
+
+    async login(req, res) {
+
+        var {email, password} = req.body;
+
+        var user = await User.findByEmail(email)
+
+        if(user != undefined) {
+
+            var result = await bcrypt.compare(password, user.password)
+
+            if(result) {
+
+                var token = jwt.sign({email: user.email, role: user.role}, secret)
+
+                res.status(200)
+                res.json({token: token})
+            }else {
+                res.status(406)
+                res.send("Senha incorreta")
+            }
+
+        }else {
+            res.json({status: false})
+        }
+    }
+}
+
+module.exports = new UserController()
